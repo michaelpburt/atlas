@@ -1,0 +1,2 @@
+# pyatlas
+Python Atlas module
