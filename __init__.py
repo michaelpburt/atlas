@@ -8,7 +8,7 @@ import urllib2
 
 class BaseCollectEvent():
   def __init__(self, **kwargs):
-    self.hi = 'hi'
+    pass
     
   def getFile(self):
     """

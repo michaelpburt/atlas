@@ -14,7 +14,7 @@ Download the modules and copy it to your home folder. On a Debian-flavored
 system, use the following as a guide:
 ```
 ~$ sudo apt-get upgrade -y && update -y
->> sudo apt-get install python-pip python-dev build-essential virtualenv -y
+~$ sudo apt-get install python-pip python-dev build-essential virtualenv -y
 ~$ sudo pip install --upgrade pip
 ~$ sudo pip install --upgrade virtualenv
 

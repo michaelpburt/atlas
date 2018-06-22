@@ -1,5 +1,5 @@
 """
-This file provides classes for handling MISO LMP data. The loadData method 
+This file provides classes for handling MISO LMP data. The getData method 
 will return a Pandas DataFrame with the associated LMP data. 
 
 All datetimes are converted to UTC.
@@ -105,6 +105,7 @@ individual MISO LMP scrapers.
 - You must supply a url constructor using a keyword arg
 - Get a Pandas DataFrame with the data by calling getData() method on the object
 """
+
 class MisoRtLmpFinalMarket(BaseMisoLmp):
   """
   The url convention for this data is:
@@ -128,7 +129,6 @@ class MisoRtLmpPrelim(BaseMisoLmp):
   The url convention for this data is:
   https://docs.misoenergy.org/marketreports/{year}{month}{day}_rt_lmp_prelim.csv
   """
-    
   def __init__(self, **kwargs):
     self.url = kwargs.get('url')
     BaseMisoLmp.__init__(self)
@@ -147,7 +147,6 @@ class MisoDaExAnteLmp(BaseMisoLmp):
   The url convention for this data is:
   https://docs.misoenergy.org/marketreports/{year}{month}{day}_da_exante_lmp.csv
   """
-    
   def __init__(self, **kwargs):
     self.url = kwargs.get('url')
     BaseMisoLmp.__init__(self)
@@ -166,7 +165,6 @@ class MisoDaExPostLmp(BaseMisoLmp):
   The url convention for this data is:
   https://docs.misoenergy.org/marketreports/{year}{month}{day}_da_expost_lmp.csv
   """
-    
   def __init__(self, **kwargs):
     self.url = kwargs.get('url')
     BaseMisoLmp.__init__(self)
