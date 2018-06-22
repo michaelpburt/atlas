@@ -11,7 +11,7 @@ CAISO data portal:
     &market_run_id={MARKET}                                                 \
     &resultformat=6                             << specifies a csv file
 
-CAISO includes the following markets: ['RTM','DAM','HASP']
+CAISO includes the following markets: ['RTM','DAM','HASP','RUC']
 
 Current supported datatypes include:
   DALMP_PRC     - CaisoDaLmpPrc
@@ -73,45 +73,6 @@ class BaseCaisoLmp(BaseCollectEvent):
     self.data = pandas.DataFrame(output)
     self.rows_accepted = len(self.data)
     return self.data
-  
-  def getFileName(self,i_data_type,i_lmp_type,i_market):
-    ulist = self.url.split('&')
-    udict = {}
-    for i in ulist:
-      udict[i.split('=')[0]] = i.split('=')[1]
-    return '{0}_{0}_{1}_{2}_{3}_v1.csv'.format(
-      udict['startdatetime'][:8],
-      i_data_type,
-      i_market,
-      i_lmp_type)
-    
-
-class CaisoDaLmpPrc(BaseCaisoLmp):
-  """
-  The url convention for this data is:
-    http://oasis.caiso.com/oasisapi/SingleZip?queryname=PRC_LMP&version=1   \
-      &startdatetime={YYYYMMDD}T07:00-0000                                  \
-      &enddatetime={YYYYMMDD}T07:00-0000                                    \
-      &market_run_id=DAM                                                    \
-      &resultformat=6                             << specifies a csv file
-      
-  - By default, just return LMP data. You can override this with the lmp_type 
-    kwarg and get MCC, MCE, or MCL LMP prices.
-  """
-  def __init__(self, lmp_type='LMP', **kwargs):
-    self.url = kwargs.get('url')
-    BaseCaisoLmp.__init__(self)
-    self.filename = self.getFileName('PRC_LMP',lmp_type,'DAM')
-    self.datatype = 'DALMP_PRC'
-    self.collector = 'CaisoDaLmpPrc'
-    
-  def getData(self, **kwargs):
-    self.getFile()
-    csv_str = self.extractFile(self.filename, self.fileobject)
-    csv_list = self.parseCsvFile(csv_str)
-    self.loadData(csv_list)
-    return self.data
-    
 
 class CaisoGenericLmp(BaseCaisoLmp):
   """
@@ -125,40 +86,79 @@ class CaisoGenericLmp(BaseCaisoLmp):
     MCC, MCE, MCL LMP types
   """
   def __init__(self, lmp_type='LMP', **kwargs):
-    self.url = self.buildUrl()
     self.datatype = kwargs.get('datatype')
-    self.date = kwargs.get('date').strftime('%Y%m%d')
+    self.date = kwargs.get('date')
+    self.url = self.buildUrl()
     BaseCaisoLmp.__init__(self)
-    self.filename = self.getFileName('PRC_LMP',lmp_type,'DAM')
-  
-  def buildUrl(self):
-    meta = cls.dataTypeMap()
-    base = 'http://oasis.caiso.com/oasisapi/SingleZip?queryname='
-    url = base + '{0}&version=1&startdatetime={1}'.format(
-      self.datatype,
-      self.date)
-    url = url + '&enddatetime={0}&market_run_id={1}&resultformat=6'.format(
-      self.date + datetime.timedelta(days=1),
-      # add the appropriate market for the datatype
-      [d['market'] for d in meta if 
-        meta['atlas_datatype'] == self.datatype][0])
-    self.url = url
-    return self.url
     
+    # build filename
+    meta = CaisoGenericLmp.dataTypeMap()
+    i_xml_name = [d['xml_name'] for d in meta if 
+      d['atlas_datatype'] == self.datatype][0]
+    i_market = [d['market'] for d in meta if 
+      d['atlas_datatype'] == self.datatype][0]
+    self.filename = self.getFileName(i_xml_name,lmp_type,i_market)
+  
+  def getFileName(self,i_data_type,i_lmp_type,i_market):
+    ulist = self.url.split('&')
+    udict = {}
+    for i in ulist:
+      udict[i.split('=')[0]] = i.split('=')[1]
+    # some files don't break out the MCE, MCC, MLC; treat accordingly
+    meta = CaisoGenericLmp.dataTypeMap()
+    if [d['lmp_component_split'] for d in meta if 
+      d['atlas_datatype'] == self.datatype][0]:
+      return '{0}_{0}_{1}_{2}_{3}_v1.csv'.format(
+        udict['startdatetime'][:8],
+        i_data_type,
+        i_market,
+        i_lmp_type)
+    else:
+      return '{0}_{0}_{1}_{2}_v1.csv'.format(
+        udict['startdatetime'][:8],
+        i_data_type,
+        i_market)
+
+  def buildUrl(self):
+    meta = CaisoGenericLmp.dataTypeMap()
+    base = 'http://oasis.caiso.com/oasisapi/SingleZip?queryname='
+    url = base + '{0}&version=1&startdatetime={1}T07:00-0000'.format(
+      # add the appropriate xml_name for the datatype
+      [d['xml_name'] for d in meta if 
+        d['atlas_datatype'] == self.datatype][0],
+      self.date.strftime('%Y%m%d'))
+    url = url + '&enddatetime={0}T07:00-0000&market_run_id={1}&resultformat=6'\
+      .format((self.date + datetime.timedelta(days=1)).strftime('%Y%m%d'),
+        # add the appropriate market for the datatype
+        [d['market'] for d in meta if 
+          d['atlas_datatype'] == self.datatype][0])
+    return url
+  
+  @classmethod
   def dataTypeMap(cls):
     datatypes = [{
         'atlas_datatype':'HALMP_PRC',
         'xml_name':'PRC_HASP_LMP',
         'market':'HASP',
         'xml_data_items':
-          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC','LMP_GHG_PRC']
+          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC','LMP_GHG_PRC'],
+        'lmp_component_split':False
+      },{
+        'atlas_datatype':'RTLMP_PRC',
+        'xml_name':'PRC_LMP',
+        'market':'RUC',
+        'xml_data_items':
+          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC'],
+        'lmp_component_split':True
       },{
         'atlas_datatype':'DALMP_PRC',
         'xml_name':'PRC_LMP',
         'market':'DAM',
         'xml_data_items':
-          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC']
+          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC'],
+        'lmp_component_split':True
       }]
+    return datatypes
     
   def getData(self, **kwargs):
     self.getFile()
