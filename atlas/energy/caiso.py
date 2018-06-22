@@ -197,8 +197,8 @@ class CaisoGenericLmp(BaseCaisoLmp):
         """
         self.rows_rejected += 1
         pass
-    df = pandas.DataFrame(output)
-    self.data = df[df.lmp_type == self.lmp_type]
+    output = list(filter(lambda d: d['lmp_type'] in [self.lmp_type], output))
+    self.data = pandas.DataFrame(sorted(output, key=lambda k: k['dt_utc']))
     self.rows_accepted = len(self.data)
     return self.data
     
