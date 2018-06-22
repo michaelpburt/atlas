@@ -101,7 +101,7 @@ Let's take a look at the DART spread at MIDC by using two of the above datatypes
 >>> caiso_da = caiso.CaisoGenericLmp(datatype='DALMP_PRC'
 ...   ,date=dt
 ...   ,pnode='CGAP_CHPD_MIDC-APND')
->>> caiso_rt = caiso.CaisoGenericLmp(datatype='RTLMP_PRC'
+>>> caiso_rt = caiso.CaisoGenericLmp(datatype='RTLMP_RTPD'
 ...   ,date=dt
 ...   ,pnode='CGAP_CHPD_MIDC-APND')
 >>> caiso_da_data = caiso_da.getData()

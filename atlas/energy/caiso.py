@@ -32,7 +32,10 @@ class BaseCaisoLmp(BaseCollectEvent):
     self.rows_accepted = 0
 
   def parseCsvFile(self, i_csv_string):
-    """Accepts a string and returns list of lists"""
+    """
+    Accepts: csv string
+    Returns: list of lists
+    """
     output = []
     for x in i_csv_string.split('\n'):
       output.append(x.split(','))
@@ -41,9 +44,12 @@ class BaseCaisoLmp(BaseCollectEvent):
   def extractFile(self, i_filename, i_filedata):
     """Open zipfile and return file-like object"""
     input_zip=zipfile.ZipFile(i_filedata)
+    
+    # override filename attr if only one file in archive
     if len(input_zip.namelist()) == 1:
       self.filename = input_zip.namelist()[0]
       return input_zip.read(self.filename)
+    
     return input_zip.read(i_filename)
 
 class CaisoGenericLmp(BaseCaisoLmp):
@@ -74,10 +80,21 @@ class CaisoGenericLmp(BaseCaisoLmp):
     self.filename = self.getFileName(i_xml_name,lmp_type,i_market)
   
   def getFileName(self,i_data_type,i_lmp_type,i_market):
+    """
+    Accepts: i_data_type (str), i_lmp_type (str), i_market (str)
+    Returns filename (str)
+    
+    This method is used to construct the filename. When only one file exists
+    in the archive, the self.filename attr is overridden in self.extractFile().
+    Note that this method does not assign attr self.filename.
+    """
+    
+    # Build a dict of url args because we need startdatetime for filename
     ulist = self.url.split('&')
     udict = {}
     for i in ulist:
       udict[i.split('=')[0]] = i.split('=')[1]
+      
     # some files don't break out the MCE, MCC, MLC; treat accordingly
     meta = CaisoGenericLmp.dataTypeMap()
     if [d['lmp_component_split'] for d in meta if 
@@ -94,6 +111,12 @@ class CaisoGenericLmp(BaseCaisoLmp):
         i_market)
 
   def buildUrl(self):
+    """
+    Accepts:  self
+    Returns:  url (str)
+    
+    Relies on following attr: self.datatype, self.date, self.pnode (opt.)
+    """
     meta = CaisoGenericLmp.dataTypeMap()
     base = 'http://oasis.caiso.com/oasisapi/SingleZip?queryname='
     url = base + '{0}&version=1&startdatetime={1}T07:00-0000'.format(
@@ -106,12 +129,18 @@ class CaisoGenericLmp(BaseCaisoLmp):
         # add the appropriate market for the datatype
         [d['market'] for d in meta if 
           d['atlas_datatype'] == self.datatype][0])
+      
+    # if a pnode arg has been supplied in __init__, then add to url
     if self.pnode:
       url = url + '&node={0}'.format(self.pnode)
     return url
   
   @classmethod
   def dataTypeMap(cls):
+    """
+    This class method is a map for atlas datatypes to CAISO OASIS datatypes.
+    Additional metadata is included to help with descrepencies between files.
+    """
     datatypes = [{
         'atlas_datatype':'HALMP_PRC',
         'xml_name':'PRC_HASP_LMP',
@@ -141,7 +170,7 @@ class CaisoGenericLmp(BaseCaisoLmp):
   
   def loadData(self, i_csv_list):
     """
-    Accepts:  list of lists representing the csv file
+    Accepts:  i_csv_list (list) < list of lists representing the csv file
     Returns:  Pandas DataFrame
     
     - All files have been GMT; we need to double check on DST issues
@@ -172,9 +201,12 @@ class CaisoGenericLmp(BaseCaisoLmp):
     self.data = df[df.lmp_type == self.lmp_type]
     self.rows_accepted = len(self.data)
     return self.data
-
     
   def getData(self, **kwargs):
+    """
+    Accepts:  self
+    Returns:  Pandas DataFrame
+    """
     self.getFile()
     csv_str = self.extractFile(self.filename, self.fileobject)
     csv_list = self.parseCsvFile(csv_str)
