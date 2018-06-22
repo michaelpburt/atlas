@@ -30,6 +30,7 @@ system, use the following as a guide:
 
 ## Examples
 
+### Scrape some MISO prices
 The following shows how to download some MISO LMP data into a Pandas DataFrame.
 
 Start by entering the interpreter:
@@ -66,9 +67,77 @@ Now download some data and play around with it:
 >>> 
 ```
 
+### Scrape some CAISO prices and look at DA/RT returns
+The following shows how to download some CAISO LMP data into a Pandas DataFrame
+and compare different datatypes to see DA/RT returns.
+
+Start by entering the interpreter:
+```
+~$ cd ~/
+~$ source ATLAS/bin/activate
+~$ python
+```
+Now download some data and play around with it:
+
+```
+>>> import atlas.energy.caiso as caiso
+>>> import datetime
+>>> 
+>>> dt = datetime.datetime(2018,06,10)
+>>> 
+```
+If you want to inspect the different CAISO datatypes, use the following code
+snippet:
+```
+>>> dtypes = caiso.CaisoGenericLmp.dataTypeMap()
+>>> for type in dtypes:
+...   print type['atlas_datatype']
+HALMP_PRC
+RTLMP_RTPD
+DALMP_PRC
+```
+Let's take a look at the DART spread at MIDC by using two of the above datatypes:
+```
+>>> caiso_da = caiso.CaisoGenericLmp(datatype='DALMP_PRC'
+...   ,date=dt
+...   ,pnode='CGAP_CHPD_MIDC-APND')
+>>> caiso_rt = caiso.CaisoGenericLmp(datatype='RTLMP_PRC'
+...   ,date=dt
+...   ,pnode='CGAP_CHPD_MIDC-APND')
+>>> caiso_da_data = caiso_da.getData()
+>>> caiso_rt_data = caiso_rt.getData()
+>>>
+>>> midc_da = caiso_da_data[caiso_da_data.node == 'CGAP_CHPD_MIDC-APND'] \
+...   .rename(columns={'price': 'DALMP_PRC'}).set_index('dt_utc')        \
+...   .drop(['datatype','iso','lmp_type','node_type','node'], axis=1)
+>>> midc_rt = caiso_rt_data[caiso_rt_data.node == 'CGAP_CHPD_MIDC-APND'] \
+...   .rename(columns={'price': 'RTLMP_PRC'}).set_index('dt_utc').       \
+...   .drop(['datatype','iso','lmp_type','node_type','node'], axis=1)    \
+...   .resample('H').mean()
+>>> midc = midc_da.join(midc_rt)
+>>> midc
+                     dalmp_prc  rtlmp_rtpd
+dt_utc                                    
+2018-06-10 08:00:00   14.16261    9.356127
+2018-06-10 16:00:00   -5.32871  -11.425930
+2018-06-10 21:00:00    0.24196   -2.118758
+2018-06-11 06:00:00   19.45879   17.930340
+2018-06-10 17:00:00   -4.87894  -16.765380
+...                   ...       ...
+2018-06-10 14:00:00   -2.13494    0.033420
+2018-06-10 22:00:00    4.88788   -2.427825
+2018-06-10 19:00:00   -0.23640   -5.051445
+2018-06-11 03:00:00   40.56685    5.306185
+2018-06-11 04:00:00   34.71625   11.336900
+
+[24 rows x 2 columns]
+>>> 
+```
+It looks like on this particular day RT prices were well below DA prices.
+
 ## Next steps
 
-* Add in CAISO, PJM, SPP, ERCOT, NYISO, NEISO LMP's
+* Add in PJM, SPP, ERCOT, NYISO, NEISO LMP's
 * Write collectors for load, ancillary services
 * Write NCDC collector
 

@@ -13,10 +13,9 @@ CAISO data portal:
 
 CAISO includes the following markets: ['RTM','DAM','HASP','RUC']
 
-Current supported datatypes include:
-  DALMP_PRC     - CaisoDaLmpPrc
-
-Additional datatypes for collection:
+It is recommended to review the CAISO API reference:
+  http://www.caiso.com/Documents/                                           \
+    OASIS-InterfaceSpecification_v4_2_6Clean_Independent2015Release.pdf
 """
 
 import datetime
@@ -42,37 +41,10 @@ class BaseCaisoLmp(BaseCollectEvent):
   def extractFile(self, i_filename, i_filedata):
     """Open zipfile and return file-like object"""
     input_zip=zipfile.ZipFile(i_filedata)
+    if len(input_zip.namelist()) == 1:
+      self.filename = input_zip.namelist()[0]
+      return input_zip.read(self.filename)
     return input_zip.read(i_filename)
-  
-  def loadData(self, i_csv_list):
-    """
-    Accepts:  list of lists representing the csv file
-    Returns:  Pandas DataFrame
-    
-    - All files have been GMT; we need to double check on DST issues
-    """
-    output = []
-    for row in i_csv_list:
-      try:
-        d = {'datatype':self.datatype,
-          'iso':'CAISO',
-          'node':row[6],
-          'node_type':'',
-          'dt_utc':datetime.datetime.strptime(row[0]
-            ,'%Y-%m-%dT%H:%M:%S-00:00'),
-          'price':float(row[14]),
-          'lmp_type':row[9]}
-        output.append(d)
-      except Exception, er:
-        """
-        No logging implemented, but this is where we would handle errors 
-        from failed rows and log it
-        """
-        self.rows_rejected += 1
-        pass
-    self.data = pandas.DataFrame(output)
-    self.rows_accepted = len(self.data)
-    return self.data
 
 class CaisoGenericLmp(BaseCaisoLmp):
   """
@@ -88,7 +60,9 @@ class CaisoGenericLmp(BaseCaisoLmp):
   def __init__(self, lmp_type='LMP', **kwargs):
     self.datatype = kwargs.get('datatype')
     self.date = kwargs.get('date')
+    self.pnode = kwargs.get('pnode')
     self.url = self.buildUrl()
+    self.lmp_type = lmp_type
     BaseCaisoLmp.__init__(self)
     
     # build filename
@@ -132,6 +106,8 @@ class CaisoGenericLmp(BaseCaisoLmp):
         # add the appropriate market for the datatype
         [d['market'] for d in meta if 
           d['atlas_datatype'] == self.datatype][0])
+    if self.pnode:
+      url = url + '&node={0}'.format(self.pnode)
     return url
   
   @classmethod
@@ -142,23 +118,61 @@ class CaisoGenericLmp(BaseCaisoLmp):
         'market':'HASP',
         'xml_data_items':
           ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC','LMP_GHG_PRC'],
-        'lmp_component_split':False
+        'lmp_component_split':False,
+        'col_offset':0
       },{
-        'atlas_datatype':'RTLMP_PRC',
-        'xml_name':'PRC_LMP',
-        'market':'RUC',
+        'atlas_datatype':'RTLMP_RTPD',
+        'xml_name':'PRC_RTPD_LMP',
+        'market':'RTPD',
         'xml_data_items':
-          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC'],
-        'lmp_component_split':True
+          ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC','LMP_GHG_PRC'],
+        'lmp_component_split':False,
+        'col_offset':-1
       },{
         'atlas_datatype':'DALMP_PRC',
         'xml_name':'PRC_LMP',
         'market':'DAM',
         'xml_data_items':
           ['LMP_CONG_PRC','LMP_ENE_PRC','LMP_LOSS_PRC','LMP_PRC'],
-        'lmp_component_split':True
+        'lmp_component_split':True,
+        'col_offset':0
       }]
     return datatypes
+  
+  def loadData(self, i_csv_list):
+    """
+    Accepts:  list of lists representing the csv file
+    Returns:  Pandas DataFrame
+    
+    - All files have been GMT; we need to double check on DST issues
+    """
+    meta = CaisoGenericLmp.dataTypeMap()
+    offset = [d['col_offset'] for d in meta 
+      if d['atlas_datatype'] == self.datatype][0]
+    output = []
+    for row in i_csv_list:
+      try:
+        d = {'datatype':self.datatype,
+          'iso':'CAISO',
+          'node':row[6 + offset],
+          'node_type':'',
+          'dt_utc':datetime.datetime.strptime(row[0]
+            ,'%Y-%m-%dT%H:%M:%S-00:00'),
+          'price':float(row[14 + offset]),
+          'lmp_type':row[9 + offset]}
+        output.append(d)
+      except Exception, er:
+        """
+        No logging implemented, but this is where we would handle errors 
+        from failed rows and log it
+        """
+        self.rows_rejected += 1
+        pass
+    df = pandas.DataFrame(output)
+    self.data = df[df.lmp_type == self.lmp_type]
+    self.rows_accepted = len(self.data)
+    return self.data
+
     
   def getData(self, **kwargs):
     self.getFile()
