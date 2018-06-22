@@ -17,10 +17,11 @@ system, use the following as a guide:
 ~$ sudo apt-get install python-pip python-dev build-essential virtualenv -y
 ~$ sudo pip install --upgrade pip
 ~$ sudo pip install --upgrade virtualenv
+~$ sudo apt-get install subversion -y
 
 ~$ cd ~/
 
-~$ git clone https://github.com/michaelpburt/atlas.git
+~$ svn checkout https://github.com/michaelpburt/atlas/trunk/atlas
 
 ~$ virtualenv ATLAS
 ~$ source ATLAS/bin/activate

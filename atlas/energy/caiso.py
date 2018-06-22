@@ -74,16 +74,16 @@ class BaseCaisoLmp(BaseCollectEvent):
     self.rows_accepted = len(self.data)
     return self.data
   
-  def getFileName(self,i_lmp,i_market):
+  def getFileName(self,i_data_type,i_lmp_type,i_market):
     ulist = self.url.split('&')
     udict = {}
     for i in ulist:
       udict[i.split('=')[0]] = i.split('=')[1]
-    return '{0}_{0}_{1}_{2}_LMP_v1.csv'.format(
+    return '{0}_{0}_{1}_{2}_{3}_v1.csv'.format(
       udict['startdatetime'][:8],
-      udict['startdatetime'][:8],
-      i_lmp,
-      i_market)
+      i_data_type,
+      i_market,
+      i_lmp_type)
     
 
 class CaisoDaLmpPrc(BaseCaisoLmp):
@@ -101,7 +101,34 @@ class CaisoDaLmpPrc(BaseCaisoLmp):
   def __init__(self, lmp_type='LMP', **kwargs):
     self.url = kwargs.get('url')
     BaseCaisoLmp.__init__(self)
-    self.filename = self.getFileName('PRC_LMP','DAM')
+    self.filename = self.getFileName('PRC_LMP',lmp_type,'DAM')
+    self.datatype = 'DALMP_PRC'
+    self.collector = 'CaisoDaLmpPrc'
+    
+  def getData(self, **kwargs):
+    self.getFile()
+    csv_str = self.extractFile(self.filename, self.fileobject)
+    csv_list = self.parseCsvFile(csv_str)
+    self.loadData(csv_list)
+    return self.data
+    
+
+class CaisoRtLmpPrc(BaseCaisoLmp):
+  """
+  The url convention for this data is:
+    http://oasis.caiso.com/oasisapi/SingleZip?queryname=PRC_LMP&version=1   \
+      &startdatetime={YYYYMMDD}T07:00-0000                                  \
+      &enddatetime={YYYYMMDD}T07:00-0000                                    \
+      &market_run_id=RTM                                                    \
+      &resultformat=6                             << specifies a csv file
+      
+  - By default, just return LMP data. You can override this with the lmp_type 
+    kwarg and get MCC, MCE, or MCL LMP prices.
+  """
+  def __init__(self, lmp_type='LMP', **kwargs):
+    self.url = kwargs.get('url')
+    BaseCaisoLmp.__init__(self)
+    self.filename = self.getFileName('PRC_LMP',lmp_type,'DAM')
     self.datatype = 'DALMP_PRC'
     self.collector = 'CaisoDaLmpPrc'
     
