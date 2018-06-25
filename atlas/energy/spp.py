@@ -13,10 +13,7 @@
 
 import sys
 import datetime
-import StringIO
-import zipfile
 
-import requests
 import pandas
 import pytz
 
@@ -24,7 +21,7 @@ from atlas import BaseCollectEvent
 
 
 class BaseSppLmp(BaseCollectEvent):
-    """This is the Super Class for all MISO LMP collector classes."""
+    """This is the Super Class for all SPP LMP collector classes."""
     
     def __init__(self, **kwargs):
         BaseCollectEvent.__init__(self)
@@ -48,7 +45,8 @@ class SppDaLmp(BaseSppLmp):
         if 'GMT' in ','.join(headers).upper():
             gmt_col = True
         for row in i_csv_list[1:]:
-            _d = dict(zip([h.lower() for h in headers], [x.upper() for x in row]))
+            _d = dict(zip(
+                [h.lower() for h in headers], [x.upper() for x in row]))
             try:
                 if gmt_col:
                     dt_utc = (datetime.datetime

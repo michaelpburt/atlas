@@ -45,8 +45,8 @@ class CaisoLmp(BaseCollectEvent):
         
     def get_data(self):
         """This method overrides the superclass method. This method 
-        generates a GET request on the self.url resource. It returns a 
-        StringIO file object.
+        generates a GET request on the self.url resource, unzips the 
+        file, and parses it into a Pandas DataFrame.
         """
         self.fileobject = self.get_file()
         unzipped = self.extract_file(self.fileobject)
@@ -58,14 +58,14 @@ class CaisoLmp(BaseCollectEvent):
     def get_file(self):
         """This method overrides the superclass method. This method 
         generates a GET request on the self.url resource. It returns a 
-        StringIO file object.
+        ZipFile file object.
         """
         r = requests.get(self.url, stream=True)
         return zipfile.ZipFile(StringIO.StringIO(r.content))
         
     def extract_file(self, i_filedata):
         """Overrides Superclass method. Open zipfile and return 
-        file-like object.
+        StringIO file-like object.
         """
         output = StringIO.StringIO()
         # override filename attr if only one file in archive
