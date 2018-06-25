@@ -25,7 +25,7 @@ system, use the following as a guide:
 
 ~$ virtualenv ATLAS
 ~$ source ATLAS/bin/activate
-~$ pip install -r atlas/requirements.txt
+(ATLAS) ~$ pip install -r atlas/requirements.txt
 ```
 
 ## Examples
@@ -37,7 +37,7 @@ Start by entering the interpreter:
 ```
 ~$ cd ~/
 ~$ source ATLAS/bin/activate
-~$ python
+(ATLAS) ~$ python
 ```
 Now download some data and inspect it:
 
@@ -78,7 +78,7 @@ Start by entering the interpreter:
 ```
 ~$ cd ~/
 ~$ source ATLAS/bin/activate
-~$ python
+(ATLAS) ~$ python
 ```
 Now download some data and play around with it:
 

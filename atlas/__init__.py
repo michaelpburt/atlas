@@ -39,7 +39,7 @@ class BaseCollectEvent():
             f = self.extract_file(self.filename, url)
             self.fileobject = f
         else:
-            r = requests.get(self.url)
+            r = requests.get(self.url, verify=False)
             f = StringIO.StringIO() 
             f.write(r.content)
             f.seek(0)

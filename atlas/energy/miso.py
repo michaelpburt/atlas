@@ -21,14 +21,18 @@ import pytz
 from atlas import BaseCollectEvent
 
 
-class BaseMisoLmp(BaseCollectEvent):
+class MisoLmp(BaseCollectEvent):
     """This is the Super Class for all MISO LMP collector classes."""
     
-    def __init__(self, **kwargs):
+    def __init__(self, lmp_type='LMP', **kwargs):
         BaseCollectEvent.__init__(self)
+        self.url = kwargs.get('url')
+        self.filename = self.url.split('/')[-1]
+        self.lmp_type = lmp_type
+        
         self.rows_rejected = 0
         self.rows_accepted = 0
-    
+
     def load_data(self, i_csv_list):
         """This method accepts a list of lists representing the csv
         file and it returns a Pandas DataFrame. 
@@ -38,9 +42,12 @@ class BaseMisoLmp(BaseCollectEvent):
         
         # find actual header row
         r = [x for x in i_csv_list if x[0] == 'Node'][0]
-        # clean is the dsc file without the top few rows of fluff
+        # clean is the csv file without the top few rows of fluff
         clean = i_csv_list[i_csv_list.index(r):]
         headers = [x.strip().upper().replace('HE ','') for x in clean[0]]
+        
+        # find the datatype form the url 
+        datatype = MisoLmp.get_datatype_from_url(url=self.url)
         
         # loop through clean and build a list of dicts
         # make EPT/UTC conversion on datetime columns
@@ -53,14 +60,14 @@ class BaseMisoLmp(BaseCollectEvent):
                 d = dict(zip(headers, 
                         [x.upper().replace('\r','') for x in row]))
                 d['data'] = [{
-                    'datatype':self.datatype,
-                    'iso':'MISO',
-                    'node':d['NODE'],
-                    'node_type':d['TYPE'],
-                    'dt_utc':(localtz.localize(
-                            date + datetime.timedelta(hours=int(x)-1))
-                            .astimezone(pytz.timezone('UTC'))),
-                    'price':float(d[str(x)])
+                    'datatype':     datatype,
+                    'iso':          'MISO',
+                    'node':         d['NODE'],
+                    'node_type':    d['TYPE'],
+                    'dt_utc':       localtz.localize(date 
+                                        + datetime.timedelta(hours=int(x)-1))
+                                        .astimezone(pytz.timezone('UTC')),
+                    'price':        float(d[str(x)]),
                 } for x in range(1,25)]
                 # add in lmp_type to dict
                 for i in d['data']:
@@ -74,38 +81,33 @@ class BaseMisoLmp(BaseCollectEvent):
                 No logging implemented, but this is where we would 
                 handle errors from failed rows and log it.
                 """
+                print er
                 self.rows_rejected += 1
                 pass
         self.data = pandas.DataFrame(output)
         self.rows_accepted = len(self.data)
         return self.data
-
-
-class MisoLmp(BaseMisoLmp):
-    """This is the generic LMP Class for MISO. Right now we only 
-    collect the MISO LMP data in daily increments."""
     
-    def __init__(self, lmp_type='LMP', **kwargs):
-        self.datatype = kwargs.get('datatype')
-        self.startdate = kwargs.get('startdate')
-        self.enddate = self.startdate + datetime.timedelta(days=1)
-        self.lmp_type = lmp_type
-        self.url = self.build_url()
-        self.filename = self.url.split('/')[-1]
-        
-        BaseMisoLmp.__init__(self)
-        
-    def build_url(self):
-        """This method builds the a url for the data source. It relies
-        on the following attributes: self.startdate, self.datatype
+    @classmethod
+    def build_url(cls, **kwargs):
+        """This class method builds  a url for the datatype 
+        and date arguments.
         """
         meta = MisoLmp.datatype_config()
         base = 'https://docs.misoenergy.org/marketreports/'
         url = base + '{0}{1}'.format(
-            self.startdate.strftime('%Y%m%d'),
+            kwargs.get('date').strftime('%Y%m%d'),
             [d['url_suffix'] for d in meta if 
-                d['atlas_datatype'] == self.datatype][0])
+                d['atlas_datatype'] == kwargs.get('datatype')][0])
         return url
+    
+    @classmethod
+    def get_datatype_from_url(cls, **kwargs):
+        """This class method finds the datatype for a given url."""
+        meta = MisoLmp.datatype_config()
+        url = kwargs.get('url')
+        conf = [i for i in meta if i['url_suffix'] in url][0]
+        return conf['atlas_datatype']
     
     @classmethod
     def datatype_config(cls):

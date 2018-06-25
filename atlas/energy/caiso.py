@@ -32,19 +32,13 @@ import urllib2
 from atlas import BaseCollectEvent
 
 
-class BaseCaisoLmp(BaseCollectEvent):
-    """This is the Super Class for all CAISO LMP collector classes."""
-    
-    def __init__(self, **kwargs):
-        BaseCollectEvent.__init__(self)
-        self.rows_rejected = 0
-        self.rows_accepted = 0
-
-
-class CaisoLmp(BaseCaisoLmp):
+class CaisoLmp(BaseCollectEvent):
     """This is the generic LMP Class for CAISO."""
     
     def __init__(self, lmp_type='LMP', **kwargs):
+        BaseCollectEvent.__init__(self)
+        self.rows_rejected = 0
+        self.rows_accepted = 0
         self.startdate = kwargs.get('startdate')
         self.pnode = kwargs.get('pnode')
         self.lmp_type = lmp_type
