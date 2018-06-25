@@ -47,7 +47,7 @@ class MisoLmp(BaseCollectEvent):
         headers = [x.strip().upper().replace('HE ','') for x in clean[0]]
         
         # find the datatype form the url 
-        datatype = MisoLmp.get_datatype_from_url(url=self.url)
+        datatype = MisoLmp._get_datatype_from_url(url=self.url)
         
         # loop through clean and build a list of dicts
         # make EPT/UTC conversion on datetime columns
@@ -63,31 +63,45 @@ class MisoLmp(BaseCollectEvent):
                     'datatype':     datatype,
                     'iso':          'MISO',
                     'node':         d['NODE'],
-                    'node_type':    d['TYPE'],
                     'dt_utc':       localtz.localize(date 
                                         + datetime.timedelta(hours=int(x)-1))
                                         .astimezone(pytz.timezone('UTC')),
                     'price':        float(d[str(x)]),
+                    'lmptype':      d['VALUE'],
                 } for x in range(1,25)]
-                # add in lmp_type to dict
-                for i in d['data']:
-                    try:
-                        i['lmp_type'] = d['VALUE']
-                    except:
-                        i['lmp_type'] = 'Unknown'
                 output.extend(d['data'])
             except Exception, er:
                 """
                 No logging implemented, but this is where we would 
                 handle errors from failed rows and log it.
                 """
-                print er
                 self.rows_rejected += 1
                 pass
-        self.data = pandas.DataFrame(output)
-        self.rows_accepted = len(self.data)
+        raw = pandas.DataFrame(output)
+        lmp = (raw[raw.lmptype == 'LMP']
+               .rename(columns={'price': 'lmp'})
+               .set_index(['dt_utc','node'])
+               .drop(['lmptype'], axis=1))
+        mcc = (raw[raw.lmptype == 'MCC']
+               .rename(columns={'price': 'cong'})
+               .set_index(['dt_utc','node'])
+               .drop(['datatype', 'iso', 'lmptype'], axis=1))
+        mlc = (raw[raw.lmptype == 'MLC']
+               .rename(columns={'price': 'loss'})
+               .set_index(['dt_utc','node'])
+               .drop(['datatype', 'iso', 'lmptype'], axis=1))
+        
+        joined = lmp.join(mcc).join(mlc).reset_index(level=['dt_utc', 'node'])
+        joined['energy'] = joined['lmp'] - joined['cong'] - joined['loss']
+        
+        self.rows_accepted = len(joined)
+        cols_ordered = [
+            'datatype','iso','node','dt_utc'
+            ,'energy','cong','loss','lmp',
+        ]
+        self.data = joined[cols_ordered]
         return self.data
-    
+        
     @classmethod
     def build_url(cls, **kwargs):
         """This class method builds  a url for the datatype 
@@ -95,14 +109,19 @@ class MisoLmp(BaseCollectEvent):
         """
         meta = MisoLmp.datatype_config()
         base = 'https://docs.misoenergy.org/marketreports/'
+        try:
+            startdate = kwargs.get('date').strftime('%Y%m%d')
+        except Exception, er:
+            startdate = kwargs.get('startdate').strftime('%Y%m%d')
+            pass
         url = base + '{0}{1}'.format(
-            kwargs.get('date').strftime('%Y%m%d'),
+            startdate,
             [d['url_suffix'] for d in meta if 
                 d['atlas_datatype'] == kwargs.get('datatype')][0])
         return url
     
     @classmethod
-    def get_datatype_from_url(cls, **kwargs):
+    def _get_datatype_from_url(cls, **kwargs):
         """This class method finds the datatype for a given url."""
         meta = MisoLmp.datatype_config()
         url = kwargs.get('url')

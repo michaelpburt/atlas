@@ -27,7 +27,7 @@ import zipfile
 import StringIO
 
 import pandas
-import urllib2
+import requests
 
 from atlas import BaseCollectEvent
 
@@ -35,88 +35,187 @@ from atlas import BaseCollectEvent
 class CaisoLmp(BaseCollectEvent):
     """This is the generic LMP Class for CAISO."""
     
-    def __init__(self, lmp_type='LMP', **kwargs):
+    def __init__(self, **kwargs):
         BaseCollectEvent.__init__(self)
         self.rows_rejected = 0
         self.rows_accepted = 0
-        self.startdate = kwargs.get('startdate')
-        self.pnode = kwargs.get('pnode')
-        self.lmp_type = lmp_type
-        # default enddate to one day from startdate if pnode is not supplied
-        if self.pnode is None:
-            self.enddate = self.startdate + datetime.timedelta(days=1)
-        else:
-            self.enddate = kwargs.get('enddate')
-        self.datatype = kwargs.get('datatype')
-        self.url = self.build_url()
-        BaseCaisoLmp.__init__(self)
+        self.url = kwargs.get('url')
+        self.datatype = CaisoLmp._get_datatype_from_url(url=self.url)
+        self.filename = self.get_file_name_from_url(self.url)
         
-        # build filename
-        meta = CaisoLmp.datatype_config()
-        i_xml_name = [d['xml_name'] for d in meta if 
-            d['atlas_datatype'] == self.datatype][0]
-        i_market = [d['market'] for d in meta if 
-            d['atlas_datatype'] == self.datatype][0]
-        self.filename = self.get_file_name(i_xml_name,lmp_type,i_market)
+    def get_data(self):
+        """This method overrides the superclass method. This method 
+        generates a GET request on the self.url resource. It returns a 
+        StringIO file object.
+        """
+        self.fileobject = self.get_file()
+        unzipped = self.extract_file(self.fileobject)
+        csvstr = unzipped.read()
+        payload = self.load_data(self.get_csv_list_from_str(csvstr))
+        del unzipped
+        return payload
         
     def get_file(self):
         """This method overrides the superclass method. This method 
         generates a GET request on the self.url resource. It returns a 
         StringIO file object.
         """
-        url = urllib2.urlopen(self.url)
-        self.fileobject = self.extract_file(self.filename, 
-                                            StringIO.StringIO(url.read()))
+        r = requests.get(self.url, stream=True)
+        return zipfile.ZipFile(StringIO.StringIO(r.content))
+        
+    def extract_file(self, i_filedata):
+        """Overrides Superclass method. Open zipfile and return 
+        file-like object.
+        """
+        output = StringIO.StringIO()
+        # override filename attr if only one file in archive
+        if len(i_filedata.namelist()) == 1:
+            self.filename = i_filedata.namelist()[0][:-3] + 'zip'
+            output.write(i_filedata.read(self.filename[:-3] + 'csv'))
+            output.seek(0)
+            return output
+        else:
+            for f in i_filedata.namelist():
+                print f
+                if f == i_filedata.namelist()[0]:
+                    output.write(i_filedata.read(f))
+                else:
+                    otemp = StringIO.StringIO()
+                    otemp.write(i_filedata.read(f))
+                    otemp.seek(0)
+                    output.write('\n'.join(otemp.readlines()[1:]))
+            output.seek(0)
+            return output
     
-    def get_file_name(self,i_data_type,i_lmp_type,i_market):
+    @classmethod
+    def get_file_name_from_url(cls, url):
         """This method is used to construct the filename. When only 
         one file exists in the zip archive, the self.filename attr 
         is overridden in self.extract_file().
         """
+        meta = CaisoLmp.datatype_config()
+        # assign datatype
+        filename_ext = [d['filename'] for d in meta 
+            if d['xml_name'] in url][0]
         # Build a dict of url args because we need startdatetime for filename
-        ulist = self.url.split('&')
+        ulist = url.split('&')
         udict = {}
         for i in ulist:
             udict[i.split('=')[0]] = i.split('=')[1]
-            
         # some files don't break out the MCE, MCC, MLC; treat accordingly
-        meta = CaisoLmp.datatype_config()
-        if [d['lmp_component_split'] for d in meta if 
-            d['atlas_datatype'] == self.datatype][0]:
-            return '{0}_{1}_{2}_{3}_{4}_v1.csv'.format(
-                udict['startdatetime'][:8]
-                ,udict['enddatetime'][:8]
-                ,i_data_type
-                ,i_market
-                ,i_lmp_type)
-        else:
-            return '{0}_{1}_{2}_{3}_v1.csv'.format(
-                udict['startdatetime'][:8]
-                ,udict['enddatetime'][:8]
-                ,i_data_type
-                ,i_market)
-
-    def build_url(self):
-        """This method builds the a url for the data source. It relies
-        on the following attributes: self.startdate, self.datatype
+        return '{0}_{1}_{2}'.format(
+            udict['startdatetime'][:8]
+            ,udict['enddatetime'][:8]
+            ,filename_ext)
+    
+    def load_data(self, i_csv_list):
+        """This method accepts a list of lists representing the csv
+        file and it returns a Pandas DataFrame. 
         """
         meta = CaisoLmp.datatype_config()
+        price_col = [d['price_col'] for d in meta 
+            if d['atlas_datatype'] == self.datatype][0]
+        headers = [x.strip().upper() for x in i_csv_list[0]]
+        output = []
+        for row in i_csv_list[1:]:
+            _d = dict(zip(
+                [h.lower() for h in headers], [x.upper() for x in row]))
+            try:
+                d = {
+                    'datatype':     self.datatype,
+                    'iso':          'CAISO',
+                    'node':         _d['node'],
+                    'node_type':    '',
+                    'dt_utc':       datetime.datetime.strptime(
+                                        _d['intervalstarttime_gmt'],
+                                        '%Y-%m-%dT%H:%M:%S-00:00'),
+                    'price':        float(_d[price_col]),
+                    'lmp_type':     _d['lmp_type'],
+                }
+                output.append(d)
+            except Exception, er:
+                """No logging implemented, but this is where we 
+                would handle errors from failed rows and log it.
+                """
+                self.rows_rejected += 1
+                pass
+        raw = pandas.DataFrame(output)
+        lmp = (raw[raw.lmp_type == 'LMP']
+               .rename(columns={'price': 'lmp'})
+               .set_index(['dt_utc','node'])
+               .drop(['lmp_type'], axis=1))
+        mcc = (raw[raw.lmp_type == 'MCC']
+               .rename(columns={'price': 'cong'})
+               .set_index(['dt_utc','node'])
+               .drop(['datatype', 'iso', 'lmp_type'], axis=1))
+        mlc = (raw[raw.lmp_type == 'MCL']
+               .rename(columns={'price': 'loss'})
+               .set_index(['dt_utc','node'])
+               .drop(['datatype', 'iso', 'lmp_type'], axis=1))
+        mce = (raw[raw.lmp_type == 'MCE']
+               .rename(columns={'price': 'energy'})
+               .set_index(['dt_utc','node'])
+               .drop(['datatype', 'iso', 'lmp_type'], axis=1))
+        
+        joined = (lmp
+            .join(mcc, how='left', lsuffix='_left', rsuffix='_right')
+            .join(mlc, how='left', lsuffix='_left', rsuffix='_right')
+            .join(mce, how='left', lsuffix='_left', rsuffix='_right')
+            .reset_index(level=['dt_utc', 'node'])
+            .sort_values(by=['node','dt_utc'])
+            .reset_index())
+        
+        self.rows_accepted = len(joined)
+        cols_ordered = [
+            'datatype','iso','node','dt_utc'
+            ,'energy','cong','loss','lmp',
+        ]
+        self.data = joined[cols_ordered]
+        return self.data
+
+    @classmethod
+    def build_url(cls, **kwargs):
+        """This class method builds a url from the startdate, 
+        enddate, pnode, datatype arg."""
+        meta = CaisoLmp.datatype_config()
         config_dict = [d for d in meta if 
-            d['atlas_datatype'] == self.datatype][0]
+            d['atlas_datatype'] == kwargs.get('datatype')][0]
+        try:
+            startdate = kwargs.get('date').strftime('%Y%m%d')
+        except Exception, er:
+            startdate = kwargs.get('startdate').strftime('%Y%m%d')
+            pass
+        # filter pnode constructor
+        if kwargs.get('pnode'):
+            try:
+                pnode_url = '&node={0}'.format(kwargs.get('pnode'))
+                enddate = kwargs.get('enddate').strftime('%Y%m%d')
+            except AttributeError:
+                enddate = (datetime.datetime.strptime(startdate, '%Y%m%d') 
+                    + datetime.timedelta(days=1)).strftime('%Y%m%d')
+                print 'enddate set to {0}'.format(enddate)
+        else:
+            pnode_url = ''
+            enddate = (datetime.strptime(startdate, '%Y%m%d') 
+                + datetime.timedelta(days=1)).strftime('%Y%m%d')
         url = 'http://oasis.caiso.com/oasisapi/SingleZip?queryname='
         url += '{0}&startdatetime={1}T07:00-0000'.format(
             # add the appropriate xml_name for the datatype
-            config_dict['xml_name']
-            ,self.startdate.strftime('%Y%m%d'))
+            config_dict['xml_name'],
+            startdate)
         url += '&enddatetime={0}T07:00-0000&market_run_id={1}'.format(
-            self.enddate.strftime('%Y%m%d')
-            ,config_dict['market'])
-        url += '&resultformat=6&version=1'
-            
-        # if a pnode arg has been supplied in __init__, then add to url
-        if self.pnode:
-            url += '&node={0}'.format(self.pnode)
+            enddate,
+            config_dict['market'])
+        url += '&resultformat=6&version=1' + pnode_url
         return url
+    
+    @classmethod
+    def _get_datatype_from_url(cls, **kwargs):
+        """This class method finds the datatype for a given url."""
+        meta = CaisoLmp.datatype_config()
+        url = kwargs.get('url')
+        conf = [i for i in meta if i['xml_name'] in url][0]
+        return conf['atlas_datatype']
     
     @classmethod
     def datatype_config(cls):
@@ -132,8 +231,10 @@ class CaisoLmp(BaseCollectEvent):
                                             'LMP_LOSS_PRC', 'LMP_PRC',
                                             'LMP_GHG_PRC',
                                         ],
-                'lmp_component_split': False,
-                'col_offset':          0,
+                'lmp_component_split':  True,
+                'price_col':           'mw',
+                'singlezip':           True,
+                'filename':             '_HASP_LMP_GRP_N_N_v1_csv.zip',
             },{
                 'atlas_datatype':       'RTLMP_RTPD',
                 'xml_name':             'PRC_RTPD_LMP',
@@ -143,8 +244,10 @@ class CaisoLmp(BaseCollectEvent):
                                             'LMP_LOSS_PRC', 'LMP_PRC',
                                             'LMP_GHG_PRC',
                                         ],
-                'lmp_component_split':  False,
-                'col_offset':           -1,
+                'lmp_component_split':  True,
+                'price_col':           'prc',
+                'singlezip':           True,
+                'filename':             '_RTPD_LMP_GRP_N_N_v1_csv.zip',
             },{
                 'atlas_datatype':       'DALMP_PRC',
                 'xml_name':             'PRC_LMP',
@@ -153,46 +256,10 @@ class CaisoLmp(BaseCollectEvent):
                                             'LMP_CONG_PRC', 'LMP_ENE_PRC',
                                             'LMP_LOSS_PRC', 'LMP_PRC',
                                         ],
-                'lmp_component_split': True,
-                'col_offset':          0,
+                'lmp_component_split':  True,
+                'price_col':            'mw',
+                'singlezip':            False,
+                'filename':             '_DAM_LMP_GRP_N_N_v1_csv.zip',
             }
         ]
         return config
-    
-    def load_data(self, i_csv_list):
-        """This method accepts a list of lists representing the csv
-        file and it returns a Pandas DataFrame. 
-        """
-        meta = CaisoLmp.datatype_config()
-        offset = [d['col_offset'] for d in meta 
-            if d['atlas_datatype'] == self.datatype][0]
-        output = []
-        for row in i_csv_list[1:]:
-            try:
-                d = {
-                    'datatype':     self.datatype,
-                    'iso':'         CAISO',
-                    'node':         row[6 + offset],
-                    'node_type':    '',
-                    'dt_utc':       datetime.datetime.strptime(
-                                        row[0]
-                                        ,'%Y-%m-%dT%H:%M:%S-00:00'),
-                    'price':        float(row[14 + offset]),
-                    'lmp_type':     row[9 + offset],
-                }
-                output.append(d)
-            except Exception, er:
-                """No logging implemented, but this is where we 
-                would handle errors from failed rows and log it.
-                """
-                print er
-                self.rows_rejected += 1
-                pass
-        # filter output to LMP type
-        output = list(filter(lambda d: d['lmp_type'] in 
-            [self.lmp_type], output))
-        # sort data by dt_utc and convert to Pandas DataFrame
-        self.data = pandas.DataFrame(
-            sorted(output, key=lambda k: k['dt_utc']))
-        self.rows_accepted = len(self.data)
-        return self.data

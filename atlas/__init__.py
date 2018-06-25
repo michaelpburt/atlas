@@ -46,9 +46,7 @@ class BaseCollectEvent():
             self.fileobject = f
     
     def extract_file(self, i_filename, i_filedata):
-        """Overrides Superclass method. Open zipfile and return 
-        file-like object.
-        """
+        """Open zipfile and return file-like object."""
         input_zip=zipfile.ZipFile(i_filedata)
         output = StringIO.StringIO()
         # override filename attr if only one file in archive

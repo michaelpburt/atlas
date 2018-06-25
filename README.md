@@ -42,32 +42,42 @@ Start by entering the interpreter:
 Now download some data and inspect it:
 
 ```
->>> import atlas.energy.miso as miso
->>> import atlas.energy.caiso as caiso
 >>> import datetime
+>>> 
+>>> import atlas.energy.miso as miso
 >>> 
 >>> dts = datetime.datetime(2018,6,19)
 >>> dte = datetime.datetime(2018,6,20)
 >>> 
->>> miso_rt = miso.MisoLmp(
-...     datatype='RTLMP_PRELIM',
-...     startdate=dts,
-...     enddate=dte)
+>>> # use the class method build_url to figure out where to get the data from
+... for dtype in miso.MisoLmp.datatype_config():
+...     print dtype['atlas_datatype']
+... 
+DALMP_EXPOST
+DALMP_EXANTE
+RTLMP_PRELIM
+RTLMP
+>>> # use the class method build_url to figure out where to get the data from
+>>> m_url = miso.MisoLmp.build_url(datatype='RTLMP', startdate=dts, enddate=dte)
+>>> print m_url
+https://docs.misoenergy.org/marketreports/20180619_rt_lmp_final.csv
 >>> 
+>>> 
+>>> miso_rt = miso.MisoLmp(url=m_url)
 >>> df = miso_rt.get_data()
 >>> df
+      datatype   iso         node                    dt_utc  energy  cong  loss    lmp
+0        RTLMP  MISO          AEC 2018-06-19 04:00:00+00:00   22.81  0.00 -0.05  22.76
+1        RTLMP  MISO          AEC 2018-06-19 05:00:00+00:00   22.27  0.00 -0.07  22.20
+2        RTLMP  MISO          AEC 2018-06-19 06:00:00+00:00   21.84  0.00 -0.08  21.76
+...        ...   ...          ...                       ...     ...   ...   ...    ...
+52653    RTLMP  MISO          YAD 2018-06-20 01:00:00+00:00   24.41  0.00  0.19  24.60
+52654    RTLMP  MISO          YAD 2018-06-20 02:00:00+00:00   22.95  0.00  0.04  22.99
+52655    RTLMP  MISO          YAD 2018-06-20 03:00:00+00:00   21.63  0.00  0.02  21.65
 
-            datatype                    dt_utc   iso lmp_type         node  node_type  price
-0       RTLMP_PRELIM 2018-06-19 04:00:00+00:00  MISO      LMP          AEC  INTERFACE  22.76
-1       RTLMP_PRELIM 2018-06-19 05:00:00+00:00  MISO      LMP          AEC  INTERFACE  22.20
-2       RTLMP_PRELIM 2018-06-19 06:00:00+00:00  MISO      LMP          AEC  INTERFACE  21.76
-...              ...                       ...   ...      ...          ...        ...    ...
-157965  RTLMP_PRELIM 2018-06-20 01:00:00+00:00  MISO      MLC          YAD  INTERFACE   0.19
-157966  RTLMP_PRELIM 2018-06-20 02:00:00+00:00  MISO      MLC          YAD  INTERFACE   0.04
-157967  RTLMP_PRELIM 2018-06-20 03:00:00+00:00  MISO      MLC          YAD  INTERFACE   0.02
-
-[157968 rows x 7 columns]
+[52656 rows x 8 columns]
 >>> 
+
 ```
 
 ### Scrape some CAISO prices and look at DA/RT returns
@@ -83,72 +93,60 @@ Start by entering the interpreter:
 Now download some data and play around with it:
 
 ```
->>> import atlas.energy.caiso as caiso
 >>> import datetime
 >>> 
->>> dt = datetime.datetime(2018,06,10)
+>>> import atlas.energy.caiso as caiso
 >>> 
-```
-If you want to inspect the different CAISO datatypes, use the following code
-snippet:
-```
->>> dtypes = caiso.CaisoLmp.datatype_config()
->>> for type in dtypes:
-...   print type['atlas_datatype']
-HALMP_PRC
-RTLMP_RTPD
-DALMP_PRC
-```
-Let's take a look at the DART spread at MIDC by using two of the above datatypes:
-```
+>>> dts = datetime.datetime(2018,6,10)
+>>> dte = datetime.datetime(2018,6,18)
 >>> 
->>> caiso_rt = caiso.CaisoLmp(
-...     datatype='RTLMP_RTPD',
+>>> c_url_rt = caiso.CaisoLmp.build_url(
+...     datatype='RTLMP_RTPD', 
+...     pnode='CGAP_CHPD_MIDC-APND', 
 ...     startdate=dts,
-...     enddate=dte,
-...     pnode='CGAP_CHPD_MIDC-APND')
->>> caiso_da = caiso.CaisoLmp(
-...     datatype='DALMP_PRC',
+...     enddate=dte)
+>>> c_url_da = caiso.CaisoLmp.build_url(
+...     datatype='DALMP_PRC', 
+...     pnode='CGAP_CHPD_MIDC-APND', 
 ...     startdate=dts,
-...     enddate=dte,
-...     pnode='CGAP_CHPD_MIDC-APND')
+...     enddate=dte)
 >>> 
->>> caiso_da_data = caiso_da.get_data()
+>>> caiso_rt = caiso.CaisoLmp(url=c_url_rt)
+>>> caiso_da = caiso.CaisoLmp(url=c_url_da)
+>>> 
 >>> caiso_rt_data = caiso_rt.get_data()
->>> 
->>> midc_da = (caiso_da_data[caiso_da_data.node == 'CGAP_CHPD_MIDC-APND'] 
-...     .rename(columns={'price': 'dalmp_prc'})
-...     .set_index('dt_utc')
-...     .drop(['datatype','iso','lmp_type','node_type','node'], axis=1))
+>>> caiso_da_data = caiso_da.get_data()
 >>> 
 >>> midc_rt = (caiso_rt_data[caiso_rt_data.node == 'CGAP_CHPD_MIDC-APND']
-...     .rename(columns={'price': 'rtlmp_rtpd'})
+...     .rename(columns={'lmp': 'rtlmp_rtpd'})
 ...     .set_index('dt_utc') 
-...     .drop(['datatype','iso','lmp_type','node_type','node'], axis=1)     
+...     .drop(['datatype','iso','node','energy','cong','loss'], axis=1)  
 ...     .resample('H')
 ...     .mean())
+>>> midc_da = (caiso_da_data[caiso_da_data.node == 'CGAP_CHPD_MIDC-APND'] 
+...     .rename(columns={'lmp': 'dalmp'})
+...     .set_index('dt_utc')
+...     .drop(['datatype','iso','node','energy','cong','loss'], axis=1))
 >>> 
 >>> midc = midc_da.join(midc_rt)
 >>> midc
-                     dalmp_prc  rtlmp_rtpd
-dt_utc                                    
-2018-06-10 07:00:00   13.08213    8.759810
-2018-06-10 08:00:00   14.16261    9.356127
-2018-06-10 09:00:00   14.75799   10.517850
-...                   ...        ...
-2018-06-11 04:00:00   34.71625   11.336900
-2018-06-11 05:00:00   19.25525   11.990675
-2018-06-11 06:00:00   19.45879   17.930340
->>> 
+                        dalmp  rtlmp_rtpd
+dt_utc                                   
+2018-06-10 07:00:00  13.08213    8.759810
+2018-06-10 08:00:00  14.16261    9.356127
+2018-06-10 09:00:00  14.75799   10.517850
+...                       ...         ...
+2018-06-18 04:00:00  34.73098   21.800213
+2018-06-18 05:00:00  27.78227   20.840042
+2018-06-18 06:00:00  23.63532   20.902700
 
-[24 rows x 2 columns]
+[192 rows x 2 columns]
 >>> 
 ```
-It looks like on this particular day RT prices were well below DA prices.
 
 ## Next steps
 
-* Add in PJM, SPP, ERCOT, NYISO, NEISO LMP's
+* Add in PJM, ERCOT, NYISO, NEISO LMP's
 * Write collectors for load, ancillary services
 * Write NCDC collector
 

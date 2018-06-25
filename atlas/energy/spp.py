@@ -17,7 +17,7 @@ import StringIO
 import zipfile
 
 import requests
-import pandas as pd
+import pandas
 import pytz
 
 from atlas import BaseCollectEvent
@@ -28,42 +28,7 @@ class BaseSppLmp(BaseCollectEvent):
     
     def __init__(self, **kwargs):
         BaseCollectEvent.__init__(self)
-    
-    def load_data(self, i_csv_list):
-        output = []
-        headers = i_csv_list[0]
-        offset = 0
-        if 'GMT' in ','.join(headers):
-            offset = 1
-        for row in i_csv_list[1:]:
-            try:
-                output = self._proc_row('LMP', 2, output, row, offset)
-                output = self._proc_row('MLC', 3, output, row, offset)
-                output = self._proc_row('MCC', 4, output, row, offset)
-                output = self._proc_row('MEC', 5, output, row, offset)
-            except Exception, er:
-                print er
-                pass
-        self.data = pd.DataFrame(output)
-        return self.data
-
-    def _proc_row(self, i_lmp_type, i_offset, i_list, row, i_gmt_offset):
-        """Helper method to process each row for each LMP type."""
-        localtz = pytz.timezone('America/Chicago')
-        d = {
-            'datatype':     self.datatype,
-            'iso':          'SPP',
-            'node':         row[1+i_gmt_offset],
-            'node_type':    '',
-            'dt_utc':       localtz.localize(datetime.datetime
-                                .strptime(row[0],'%m/%d/%Y %H:%M:%S'))
-                                .astimezone(pytz.timezone('UTC')),
-            'price':        float(row[i_offset+i_gmt_offset]),
-            'lmp_type':     i_lmp_type,
-        }
-        i_list.append(d)
-        return i_list
-
+        
 
 class SppDaLmp(BaseSppLmp):
     """This is the generic LMP Class for SPP. Right now we only 
@@ -74,5 +39,53 @@ class SppDaLmp(BaseSppLmp):
         self.url = kwargs.get('url')
         self.filename = self.url[-25:]
         self.datatype = 'DALMP'
-        
-
+    
+    def load_data(self, i_csv_list):
+        output = []
+        headers = i_csv_list[0]
+        localtz = pytz.timezone('America/Chicago')
+        gmt_col = False
+        if 'GMT' in ','.join(headers).upper():
+            gmt_col = True
+        for row in i_csv_list[1:]:
+            _d = dict(zip([h.lower() for h in headers], [x.upper() for x in row]))
+            try:
+                if gmt_col:
+                    dt_utc = (datetime.datetime
+                        .strptime(_d['gmtintervalend'],'%m/%d/%Y %H:%M:%S')
+                        + datetime.timedelta(hours=-1))
+                else:
+                    dt_utc = (localtz.localize(datetime.datetime
+                        .strptime(_d['interval'],'%m/%d/%Y %H:%M:%S'))
+                        .astimezone(pytz.timezone('UTC'))
+                        + datetime.timedelta(hours=-1))
+                d = {
+                    'datatype':     self.datatype,
+                    'iso':          'SPP',
+                    'node':         _d['pnode'],
+                    'dt_utc':       dt_utc,
+                    'energy':       float(_d['mec']),
+                    'cong':         float(_d['mcc']),
+                    'loss':         float(_d['mlc']),
+                    'lmp':          float(_d['lmp']),
+                }
+                output.append(d)
+            except Exception, er:
+                print er
+                pass
+        cols_ordered = [
+            'datatype','iso','node','dt_utc'
+            ,'energy','cong','loss','lmp',
+        ]
+        self.data = pandas.DataFrame(output)[cols_ordered]
+        return self.data
+    
+    @classmethod
+    def build_url(cls, **kwargs):
+        """This class method builds a url from the date arg."""
+        base = 'https://marketplace.spp.org/file-api/download/da-lmp-by-bus?'
+        url = base + 'path=/{0}/{1}/By_Day/DA-LMP-B-{0}{1}{2}0100.csv'.format(
+            kwargs.get('date').strftime('%Y'),
+            kwargs.get('date').strftime('%m'),
+            kwargs.get('date').strftime('%d'))
+        return url
