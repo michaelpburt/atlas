@@ -49,8 +49,8 @@ Now download some data and inspect it:
 >>> dts = datetime.datetime(2018,6,19)
 >>> dte = datetime.datetime(2018,6,20)
 >>> 
->>> # use the class method build_url to figure out where to get the data from
-... for dtype in miso.MisoLmp.datatype_config():
+>>> # use the class method datatype_config to see the Atlas datatypes
+>>> for dtype in miso.MisoLmp.datatype_config():
 ...     print dtype['atlas_datatype']
 ... 
 DALMP_EXPOST

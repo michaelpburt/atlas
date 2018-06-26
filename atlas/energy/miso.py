@@ -24,11 +24,10 @@ from atlas import BaseCollectEvent
 class MisoLmp(BaseCollectEvent):
     """This is the Super Class for all MISO LMP collector classes."""
     
-    def __init__(self, lmp_type='LMP', **kwargs):
+    def __init__(self, **kwargs):
         BaseCollectEvent.__init__(self)
         self.url = kwargs.get('url')
         self.filename = self.url.split('/')[-1]
-        self.lmp_type = lmp_type
         
         self.rows_rejected = 0
         self.rows_accepted = 0
