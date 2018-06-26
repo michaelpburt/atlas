@@ -43,8 +43,8 @@ class BaseErcot(BaseCollectEvent):
         """
         output = StringIO.StringIO()
         # override filename attr if only one file in archive
-        self.filename = i_filedata.namelist()[0][:-3] + 'zip'
-        output.write(i_filedata.read(self.filename[:-3] + 'csv'))
+        self.filename = i_filedata.namelist()[0] + '.zip'
+        output.write(i_filedata.read(self.filename[:-4]))
         output.seek(0)
         return output
     
@@ -59,6 +59,15 @@ class BaseErcot(BaseCollectEvent):
         payload = self.load_data(self.get_csv_list_from_str(csvstr))
         del unzipped
         return payload
+    
+    @classmethod
+    def get_const_cols(cls):
+        return [
+            'datatype','iso','dt_utc','constraint_id','constraint_name',
+            'contingency_name','shadow_price','max_shadow_price',
+            'constraint_limit','constraint_value','violation_amount',
+            'from_station','to_station','from_station_kv','to_station_kv',
+        ]
         
 
 class ErcotDaLmp(BaseErcot):
@@ -163,14 +172,6 @@ class ErcotSced(BaseErcot):
         BaseErcot.__init__(self)
         self.url = kwargs.get('url')
         self.datatype = 'SCED_GEN'
-        
-    def get_file(self):
-        """This method overrides the superclass method. This method 
-        generates a GET request on the self.url resource. It returns a 
-        ZipFile file object.
-        """
-        r = requests.get(self.url, stream=True)
-        return zipfile.ZipFile(StringIO.StringIO(r.content))
     
     def extract_file(self, i_filedata):
         """Overrides Superclass method. Open zipfile and return 
@@ -253,4 +254,102 @@ class ErcotSced(BaseErcot):
                 print er
                 pass
         self.data = pandas.DataFrame(output)
+        return self.data
+
+
+class ErcotDaConstraint(BaseErcot):
+    """This class is for ERCOT DA constraint and shadow price data."""
+    
+    def __init__(self, **kwargs):
+        BaseErcot.__init__(self)
+        self.url = kwargs.get('url')
+        self.datatype = 'DA_CONSTRAINT'
+        self.fileobject = self.get_file()
+    
+    def load_data(self, i_csv_list):
+        output = []
+        headers = [i.lower().strip().replace('"','') for i in i_csv_list[0]]
+        localtz = pytz.timezone('America/Chicago')
+        for row in i_csv_list[1:]:
+            _d = dict(
+                zip(
+                    [h.lower().strip().replace('"','') for h in headers],
+                    [x.upper().strip().replace('"','') for x in row]
+                )
+            )
+            try:
+                dt = (localtz.localize(datetime.datetime
+                    .strptime(_d['deliverytime'],'%m/%d/%Y %H:%M:%S'))
+                    .astimezone(pytz.timezone('UTC')))
+                d = {
+                    'datatype':             self.datatype,
+                    'iso':                  'ERCOT',
+                    'dt_utc':               dt,
+                    'constraint_id':        _d['constraintid'],
+                    'constraint_name':      _d['constraintname'],
+                    'contingency_name':     _d['contingencyname'],
+                    'shadow_price':         _d['shadowprice'],
+                    'max_shadow_price':     '',
+                    'constraint_limit':     _d['constraintlimit'],
+                    'constraint_value':     _d['constraintvalue'],
+                    'violation_amount':     _d['violationamount'],
+                    'from_station':         _d['fromstation'],
+                    'to_station':           _d['tostation'],
+                    'from_station_kv':      _d['fromstationkv'],
+                    'to_station_kv':        _d['tostationkv'],
+                }
+                output.append(d)
+            except Exception, er:
+                print er
+                pass
+        self.data = pandas.DataFrame(output)[BaseErcot.get_const_cols()]
+        return self.data
+
+
+class ErcotRtConstraint(BaseErcot):
+    """This class is for ERCOT RT constraint and shadow price data."""
+    
+    def __init__(self, **kwargs):
+        BaseErcot.__init__(self)
+        self.url = kwargs.get('url')
+        self.datatype = 'RT_CONSTRAINT'
+        self.fileobject = self.get_file()
+    
+    def load_data(self, i_csv_list):
+        output = []
+        headers = [i.lower().strip().replace('"','') for i in i_csv_list[0]]
+        localtz = pytz.timezone('America/Chicago')
+        for row in i_csv_list[1:]:
+            _d = dict(
+                zip(
+                    [h.lower().strip().replace('"','') for h in headers],
+                    [x.upper().strip().replace('"','') for x in row]
+                )
+            )
+            try:
+                dt = (localtz.localize(datetime.datetime
+                    .strptime(_d['scedtimestamp'],'%m/%d/%Y %H:%M:%S'))
+                    .astimezone(pytz.timezone('UTC')))
+                d = {
+                    'datatype':             self.datatype,
+                    'iso':                  'ERCOT',
+                    'dt_utc':               dt,
+                    'constraint_id':        _d['constraintid'],
+                    'constraint_name':      _d['constraintname'],
+                    'contingency_name':     _d['contingencyname'],
+                    'shadow_price':         _d['shadowprice'],
+                    'max_shadow_price':     _d['maxshadowprice'],
+                    'constraint_limit':     _d['limit'],
+                    'constraint_value':     _d['value'],
+                    'violation_amount':     _d['violatedmw'],
+                    'from_station':         _d['fromstation'],
+                    'to_station':           _d['tostation'],
+                    'from_station_kv':      _d['fromstationkv'],
+                    'to_station_kv':        _d['tostationkv'],
+                }
+                output.append(d)
+            except Exception, er:
+                print er
+                pass
+        self.data = pandas.DataFrame(output)[BaseErcot.get_const_cols()]
         return self.data
